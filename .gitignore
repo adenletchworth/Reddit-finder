@@ -1,1 +1,8 @@
 venv
+.env.dev
+.env
+/dags/configs
+**/__pycache__/
+.vscode/
+.vscode/*
+logs
