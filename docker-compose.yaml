@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   web:
+    container_name: reddit-finder-web
     build: ./app
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
@@ -12,6 +11,7 @@ services:
       - ./.env.dev
 
   zookeeper:
+    container_name: reddit-finder-zookeeper
     image: confluentinc/cp-zookeeper:latest
     ports:
       - "2181:2181"
@@ -19,10 +19,11 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     volumes:
-      - zookeeper-data:/var/lib/zookeeper/data
+      - reddit-finder_zookeeper-data:/var/lib/zookeeper/data
     restart: always
 
   kafka:
+    container_name: reddit-finder-kafka
     image: confluentinc/cp-kafka:latest
     ports:
       - "9092:9092"
@@ -30,21 +31,23 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - reddit-finder_kafka-data:/var/lib/kafka/data
     depends_on:
       - zookeeper
     restart: always
 
   postgres:
+    container_name: reddit-finder-postgres
     image: postgres:13
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
+      - reddit-finder_postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
@@ -53,6 +56,7 @@ services:
     restart: always
 
   airflow-webserver:
+    container_name: reddit-finder-airflow-webserver
     image: ${AIRFLOW_IMAGE_NAME:-extending_airflow:latest}
     build: .
     entrypoint: ["tini", "--", "airflow"]
@@ -90,6 +94,7 @@ services:
         condition: service_completed_successfully
 
   airflow-scheduler:
+    container_name: reddit-finder-airflow-scheduler
     image: ${AIRFLOW_IMAGE_NAME:-extending_airflow:latest}
     build: .
     entrypoint: ["tini", "--", "airflow"]
@@ -97,7 +102,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
@@ -125,6 +130,7 @@ services:
         condition: service_completed_successfully
 
   airflow-triggerer:
+    container_name: reddit-finder-airflow-triggerer
     image: ${AIRFLOW_IMAGE_NAME:-extending_airflow:latest}
     build: .
     entrypoint: ["tini", "--", "airflow"]
@@ -132,7 +138,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
@@ -160,6 +166,7 @@ services:
         condition: service_completed_successfully
 
   airflow-init:
+    container_name: reddit-finder-airflow-init
     image: ${AIRFLOW_IMAGE_NAME:-extending_airflow:latest}
     build: .
     entrypoint: /bin/bash
@@ -201,13 +208,6 @@ services:
           echo
           warning_resources="true"
         fi
-        if [[ $${warning_resources} == "true" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
-          echo "Please follow the instructions to increase amount of resources available:"
-          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
-          echo
-        fi
         mkdir -p /sources/logs /sources/dags /sources/plugins
         chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
         exec /entrypoint airflow version
@@ -215,7 +215,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
@@ -229,6 +229,7 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}:/sources
 
   airflow-cli:
+    container_name: reddit-finder-airflow-cli
     image: ${AIRFLOW_IMAGE_NAME:-extending_airflow:latest}
     build: .
     entrypoint: ["tini", "--", "airflow"]
@@ -236,11 +237,10 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-      _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
       CONNECTION_CHECK_MAX_COUNT: "0"
     env_file:
       - .env
@@ -256,6 +256,9 @@ services:
       - airflow
 
 volumes:
-  postgres-db-volume:
-  zookeeper-data:
-  kafka-data:
+  reddit-finder_zookeeper-data:
+    name: reddit-finder_zookeeper-data
+  reddit-finder_kafka-data:
+    name: reddit-finder_kafka-data
+  reddit-finder_postgres-db-volume:
+    name: reddit-finder_postgres-db-volume
