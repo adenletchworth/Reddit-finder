@@ -1,4 +1,4 @@
-# Reddit Finder
+# ThreadMatch
 
 ## Project Overview
 
