@@ -41,26 +41,28 @@ def delivery_report(err, msg):
     else:
         print(f"Record {msg.key()} successfully produced to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
 
-def fetch_historical_reddit_posts(**kwargs):
+def fetch_historical_reddit_posts(subreddit_name):
     init_db()
     reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
     producer_config = {
         'bootstrap.servers': bootstrap_servers,
-        'message.timeout.ms': 60000  # Increase the message timeout to 60 seconds
+        'message.timeout.ms': 60000  
     }
     producer = Producer(producer_config)
 
-    for subreddit_name in subreddits_list:
-        if has_historical_data_been_fetched(subreddit_name):
-            print(f"Historical data for subreddit {subreddit_name} already fetched. Skipping...")
-            continue
+    if has_historical_data_been_fetched(subreddit_name):
+        print(f"Historical data for subreddit {subreddit_name} already fetched. Skipping...")
+        return
 
-        subreddit = reddit.subreddit(subreddit_name)
-        for submission in subreddit.new(limit=1000):
+    subreddit = reddit.subreddit(subreddit_name)
+    for submission in subreddit.new(limit=1000):
+        try:
+            print(f"Processing post {submission.id} with selftext: {submission.selftext[:30]}...")
+
             post = {
                 'id': submission.id,
                 'title': submission.title,
-                'selftext': submission.selftext,
+                'selftext': submission.selftext if submission.selftext else '',
                 'created_utc': submission.created_utc,
                 'author': str(submission.author),
                 'subreddit': str(submission.subreddit),
@@ -85,53 +87,60 @@ def fetch_historical_reddit_posts(**kwargs):
                 'distinguished': submission.distinguished
             }
             producer.produce(topic_name, key=post['id'], value=json.dumps(post), callback=delivery_report)
+        except Exception as e:
+            print(f"Error processing post {submission.id}: {e}")
 
-        set_historical_data_fetched(subreddit_name)
-
+    set_historical_data_fetched(subreddit_name)
     producer.flush()
 
-def stream_reddit_posts_to_kafka():
+def stream_reddit_posts_to_kafka(subreddit_name):
     reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
     producer_config = {
         'bootstrap.servers': bootstrap_servers,
-        'message.timeout.ms': 60000  # Increase the message timeout to 60 seconds
+        'message.timeout.ms': 60000 
     }
     producer = Producer(producer_config)
 
     def send_to_kafka(submission):
-        post = {
-            'id': submission.id,
-            'title': submission.title,
-            'selftext': submission.selftext,
-            'created_utc': submission.created_utc,
-            'author': str(submission.author),
-            'subreddit': str(submission.subreddit),
-            'score': submission.score,
-            'ups': submission.ups,
-            'downs': submission.downs,
-            'num_comments': submission.num_comments,
-            'url': submission.url,
-            'permalink': submission.permalink,
-            'is_self': submission.is_self,
-            'over_18': submission.over_18,
-            'spoiler': submission.spoiler,
-            'locked': submission.locked,
-            'stickied': submission.stickied,
-            'edited': submission.edited,
-            'flair_text': submission.link_flair_text,
-            'flair_css_class': submission.link_flair_css_class,
-            'thumbnail': submission.thumbnail,
-            'media': submission.media,
-            'view_count': submission.view_count,
-            'archived': submission.archived,
-            'distinguished': submission.distinguished
-        }
-        producer.produce(topic_name, key=post['id'], value=json.dumps(post), callback=delivery_report)
+        try:
+            print(f"Streaming post {submission.id} with selftext: {submission.selftext[:30]}...")
 
-    for subreddit_name in subreddits_list:
-        subreddit = reddit.subreddit(subreddit_name)
-        for submission in subreddit.stream.submissions():
-            send_to_kafka(submission)
+            post = {
+                'id': submission.id,
+                'title': submission.title,
+                'selftext': submission.selftext if submission.selftext else '',
+                'created_utc': submission.created_utc,
+                'author': str(submission.author),
+                'subreddit': str(submission.subreddit),
+                'score': submission.score,
+                'ups': submission.ups,
+                'downs': submission.downs,
+                'num_comments': submission.num_comments,
+                'url': submission.url,
+                'permalink': submission.permalink,
+                'is_self': submission.is_self,
+                'over_18': submission.over_18,
+                'spoiler': submission.spoiler,
+                'locked': submission.locked,
+                'stickied': submission.stickied,
+                'edited': submission.edited,
+                'flair_text': submission.link_flair_text,
+                'flair_css_class': submission.link_flair_css_class,
+                'thumbnail': submission.thumbnail,
+                'media': submission.media,
+                'view_count': submission.view_count,
+                'archived': submission.archived,
+                'distinguished': submission.distinguished
+            }
+            print(f"Producing post {post['id']} to Kafka")
+            producer.produce(topic_name, key=post['id'], value=json.dumps(post), callback=delivery_report)
+        except Exception as e:
+            print(f"Error streaming post {submission.id}: {e}")
+
+    subreddit = reddit.subreddit(subreddit_name)
+    print(f"Starting stream for subreddit: {subreddit_name}")
+    for submission in subreddit.stream.submissions(skip_existing=True):
+        send_to_kafka(submission)
 
     producer.flush()
 
@@ -153,24 +162,19 @@ dag = DAG(
     max_active_runs=1,
 )
 
-fetch_historical_task = PythonOperator(
-    task_id='fetch_historical_reddit_posts',
-    python_callable=fetch_historical_reddit_posts,
-    provide_context=True,
-    dag=dag,
-)
+for subreddit_name in subreddits_list:
+    fetch_historical_task = PythonOperator(
+        task_id=f'fetch_historical_reddit_posts_{subreddit_name}',
+        python_callable=fetch_historical_reddit_posts,
+        op_args=[subreddit_name],
+        dag=dag,
+    )
 
-stream_reddit_posts_task = PythonOperator(
-    task_id='stream_reddit_posts',
-    python_callable=stream_reddit_posts_to_kafka,
-    provide_context=True,
-    dag=dag,
-    execution_timeout=timedelta(hours=1),
-    depends_on_past=False,
-    retries=1,
-    retry_delay=timedelta(minutes=5),
-    max_active_tis_per_dag=1,
-)
+    stream_reddit_posts_task = PythonOperator(
+        task_id=f'stream_reddit_posts_{subreddit_name}',
+        python_callable=stream_reddit_posts_to_kafka,
+        op_args=[subreddit_name],
+        dag=dag,
+    )
 
-# Task dependency
-fetch_historical_task >> stream_reddit_posts_task
+    fetch_historical_task >> stream_reddit_posts_task

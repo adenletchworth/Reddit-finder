@@ -1,3 +1,7 @@
 praw
 confluent-kafka
 pymongo
+apache-airflow-providers-apache-kafka
+faiss-cpu
+sentence-transformers
+

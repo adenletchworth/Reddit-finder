@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
-from airflow import DAG # type: ignore
-from airflow.operators.python_operator import PythonOperator # type: ignore
-from airflow.sensors.base import BaseSensorOperator # type: ignore
-from confluent_kafka import Consumer, KafkaError, KafkaException # type: ignore
-from pymongo import MongoClient # type: ignore
-from airflow.utils.decorators import apply_defaults # type: ignore
+from airflow import DAG  # type: ignore
+from airflow.operators.python_operator import PythonOperator  # type: ignore
+from airflow.sensors.base import BaseSensorOperator  # type: ignore
+from confluent_kafka import Consumer, KafkaError, KafkaException  # type: ignore
+from pymongo import MongoClient, errors  # type: ignore
+from airflow.utils.decorators import apply_defaults  # type: ignore
 import json
 from configs.kafka import bootstrap_servers, topic_name, mongo_uri, mongo_db_name, mongo_collection_name
 
@@ -25,7 +25,7 @@ class KafkaMessageSensor(BaseSensorOperator):
         consumer = Consumer(self.kafka_config)
         consumer.subscribe([self.topic])
 
-        msg = consumer.poll(timeout=1.0)
+        msg = consumer.poll(timeout=10.0)
         if msg is None:
             consumer.close()
             return False
@@ -41,7 +41,9 @@ class KafkaMessageSensor(BaseSensorOperator):
         consumer.close()
         return True
 
-# Define the consume_and_store_messages function
+def ensure_unique_index(collection):
+    collection.create_index([('id', 1), ('subreddit', 1)], unique=True)
+
 def consume_and_store_messages(**kwargs):
     consumer = Consumer(kafka_config)
     consumer.subscribe([topic_name])
@@ -50,9 +52,11 @@ def consume_and_store_messages(**kwargs):
     db = client[mongo_db_name]
     collection = db[mongo_collection_name]
 
+    ensure_unique_index(collection)
+
     try:
         while True:
-            msg = consumer.poll(timeout=1.0)
+            msg = consumer.poll(timeout=10.0)
             if msg is None:
                 break
 
@@ -65,8 +69,11 @@ def consume_and_store_messages(**kwargs):
             else:
                 record_value = msg.value().decode('utf-8')
                 record = json.loads(record_value)
-                collection.insert_one(record)
-                print(f'Record inserted: {record}')
+                try:
+                    collection.insert_one(record)
+                    print(f'Record inserted: {record}')
+                except errors.DuplicateKeyError:
+                    print(f'Duplicate record found: {record}')
     except Exception as e:
         print(f'Error: {e}')
     finally:
@@ -87,11 +94,10 @@ dag = DAG(
     'kafka_to_mongodb_event_driven',
     default_args=default_args,
     description='Consume messages from Kafka and store in MongoDB only when there are messages',
-    schedule_interval=None,
+    schedule_interval=timedelta(minutes=5),
     catchup=False
 )
 
-# Define the tasks
 kafka_sensor = KafkaMessageSensor(
     task_id='kafka_message_sensor',
     kafka_config=kafka_config,
