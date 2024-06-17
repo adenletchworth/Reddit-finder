@@ -41,8 +41,8 @@ class KafkaMessageSensor(BaseSensorOperator):
         consumer.close()
         return True
 
-def ensure_unique_index(collection):
-    collection.create_index([('id', 1), ('subreddit', 1)], unique=True)
+def ensure_unique_index(collection, keys):
+    collection.create_index(keys, unique=True)
 
 def consume_and_store_messages(**kwargs):
     consumer = Consumer(kafka_config)
@@ -52,7 +52,10 @@ def consume_and_store_messages(**kwargs):
     db = client[mongo_db_name]
     collection = db[mongo_collection_name]
 
-    ensure_unique_index(collection)
+    ensure_unique_index(collection, [('id', 1), ('subreddit', 1)])
+
+    faiss_index_collection = db['faiss_index']
+    ensure_unique_index(faiss_index_collection, [('_id', 1)])
 
     try:
         while True:
@@ -69,11 +72,23 @@ def consume_and_store_messages(**kwargs):
             else:
                 record_value = msg.value().decode('utf-8')
                 record = json.loads(record_value)
+
                 try:
                     collection.insert_one(record)
                     print(f'Record inserted: {record}')
                 except errors.DuplicateKeyError:
-                    print(f'Duplicate record found: {record}')
+                    print(f'Duplicate record found in posts: {record}')
+
+                try:
+                    # Ensure unique insertion in FAISS index metadata
+                    faiss_index_collection.update_one(
+                        {'_id': record['id']},
+                        {'$setOnInsert': {'subreddit': record['subreddit']}},
+                        upsert=True
+                    )
+                    print(f'FAISS index metadata inserted/updated for record: {record["id"]}')
+                except errors.DuplicateKeyError:
+                    print(f'Duplicate record found in FAISS index metadata: {record["id"]}')
     except Exception as e:
         print(f'Error: {e}')
     finally:

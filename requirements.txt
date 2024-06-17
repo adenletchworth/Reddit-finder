@@ -4,4 +4,8 @@ pymongo
 apache-airflow-providers-apache-kafka
 faiss-cpu
 sentence-transformers
+matplotlib
+pyspark
+bs4
+
 

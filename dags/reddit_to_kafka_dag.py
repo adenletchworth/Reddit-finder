@@ -178,3 +178,4 @@ for subreddit_name in subreddits_list:
     )
 
     fetch_historical_task >> stream_reddit_posts_task
+
