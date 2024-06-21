@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 from pymongo import MongoClient
 
-#mongo_url = 'mongodb://host.docker.internal:27017/'
-mongo_url = 'mongodb://localhost:27017/'
+mongo_url = 'mongodb://host.docker.internal:27017/'
+
 client = MongoClient(mongo_url)
 db = client['Reddit']
 collection = db['posts']

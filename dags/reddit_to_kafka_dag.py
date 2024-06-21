@@ -1,39 +1,13 @@
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
-import praw
-from confluent_kafka import Producer
+from airflow import DAG # type: ignore
+from airflow.operators.python_operator import PythonOperator # type: ignore
+import praw # type: ignore
+from confluent_kafka import Producer # type: ignore
 import json
-import sqlite3
-import os
 from configs.reddit import client_id, client_secret, user_agent, subreddits_list
 from configs.kafka import bootstrap_servers, topic_name
 
-DB_PATH = '/opt/airflow/dags/db/historical_data_flag.db'
-
-def init_db():
-    if not os.path.exists(DB_PATH):
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS fetch_flags (subreddit TEXT PRIMARY KEY, fetched INTEGER)''')
-        conn.commit()
-        conn.close()
-
-def has_historical_data_been_fetched(subreddit_name):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT fetched FROM fetch_flags WHERE subreddit = ?', (subreddit_name,))
-    result = cursor.fetchone()
-    conn.close()
-    return result is not None and result[0] == 1
-
-def set_historical_data_fetched(subreddit_name):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO fetch_flags (subreddit, fetched) VALUES (?, ?)', (subreddit_name, 1))
-    conn.commit()
-    conn.close()
+fetch_flags = {}
 
 def delivery_report(err, msg):
     if err is not None:
@@ -42,7 +16,6 @@ def delivery_report(err, msg):
         print(f"Record {msg.key()} successfully produced to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
 
 def fetch_historical_reddit_posts(subreddit_name):
-    init_db()
     reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
     producer_config = {
         'bootstrap.servers': bootstrap_servers,
@@ -50,7 +23,7 @@ def fetch_historical_reddit_posts(subreddit_name):
     }
     producer = Producer(producer_config)
 
-    if has_historical_data_been_fetched(subreddit_name):
+    if fetch_flags.get(subreddit_name, False):
         print(f"Historical data for subreddit {subreddit_name} already fetched. Skipping...")
         return
 
@@ -90,7 +63,7 @@ def fetch_historical_reddit_posts(subreddit_name):
         except Exception as e:
             print(f"Error processing post {submission.id}: {e}")
 
-    set_historical_data_fetched(subreddit_name)
+    fetch_flags[subreddit_name] = True
     producer.flush()
 
 def stream_reddit_posts_to_kafka(subreddit_name):
@@ -135,7 +108,7 @@ def stream_reddit_posts_to_kafka(subreddit_name):
             print(f"Producing post {post['id']} to Kafka")
             producer.produce(topic_name, key=post['id'], value=json.dumps(post), callback=delivery_report)
         except Exception as e:
-            print(f"Error streaming post {submission.id}: {e}")
+            print(f"Error streaming post {submission.id}: {e}") 
 
     subreddit = reddit.subreddit(subreddit_name)
     print(f"Starting stream for subreddit: {subreddit_name}")
@@ -178,4 +151,3 @@ for subreddit_name in subreddits_list:
     )
 
     fetch_historical_task >> stream_reddit_posts_task
-

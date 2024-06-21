@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
-from airflow import DAG  # type: ignore
-from airflow.operators.python_operator import PythonOperator  # type: ignore
-from airflow.sensors.base import BaseSensorOperator  # type: ignore
-from confluent_kafka import Consumer, KafkaError, KafkaException  # type: ignore
-from pymongo import MongoClient, errors  # type: ignore
-from airflow.utils.decorators import apply_defaults  # type: ignore
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.sensors.base import BaseSensorOperator
+from confluent_kafka import Consumer, KafkaError, KafkaException
+from pymongo import MongoClient, errors
+from airflow.utils.decorators import apply_defaults
 import json
 from configs.kafka import bootstrap_servers, topic_name, mongo_uri, mongo_db_name, mongo_collection_name
 
@@ -42,7 +42,10 @@ class KafkaMessageSensor(BaseSensorOperator):
         return True
 
 def ensure_unique_index(collection, keys):
-    collection.create_index(keys, unique=True)
+    if keys[0][0] != '_id':
+        collection.create_index(keys, unique=True)
+    else:
+        collection.create_index(keys)
 
 def consume_and_store_messages(**kwargs):
     consumer = Consumer(kafka_config)
@@ -55,7 +58,7 @@ def consume_and_store_messages(**kwargs):
     ensure_unique_index(collection, [('id', 1), ('subreddit', 1)])
 
     faiss_index_collection = db['faiss_index']
-    ensure_unique_index(faiss_index_collection, [('_id', 1)])
+    ensure_unique_index(faiss_index_collection, [('_id', 1)]) 
 
     try:
         while True:
@@ -72,23 +75,21 @@ def consume_and_store_messages(**kwargs):
             else:
                 record_value = msg.value().decode('utf-8')
                 record = json.loads(record_value)
+                
+                if collection.find_one({'id': record['id'], 'subreddit': record['subreddit']}):
+                    print(f'Duplicate record found in posts, skipping: {record}')
+                    continue
+
+                faiss_index_entry = faiss_index_collection.find_one({'_id': '6673232bd2d083ce68403713'})
+                if faiss_index_entry and any(meta['id'] == record['id'] for meta in faiss_index_entry['metadata']):
+                    print(f'Duplicate record found in FAISS index metadata, skipping: {record}')
+                    continue
 
                 try:
                     collection.insert_one(record)
                     print(f'Record inserted: {record}')
                 except errors.DuplicateKeyError:
                     print(f'Duplicate record found in posts: {record}')
-
-                try:
-                    # Ensure unique insertion in FAISS index metadata
-                    faiss_index_collection.update_one(
-                        {'_id': record['id']},
-                        {'$setOnInsert': {'subreddit': record['subreddit']}},
-                        upsert=True
-                    )
-                    print(f'FAISS index metadata inserted/updated for record: {record["id"]}')
-                except errors.DuplicateKeyError:
-                    print(f'Duplicate record found in FAISS index metadata: {record["id"]}')
     except Exception as e:
         print(f'Error: {e}')
     finally:
