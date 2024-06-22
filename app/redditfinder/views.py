@@ -1,18 +1,5 @@
-from django.http import HttpResponse
+from django.shortcuts import render
 
-def home(request):
-    return HttpResponse("Welcome to Reddit Finder!")
-
-def about(request):
-    return HttpResponse("About Reddit Finder")
-
-def addSubreddit(request):
-    return HttpResponse("Add a subreddit")
-
-def searchSubreddit(request):
-    return HttpResponse("Search a subreddit")
-
-def searchReddit(request):
-    return HttpResponse("Search Reddit")
-
+def index(request):
+    return render(request, 'redditfinder/index.html')
 

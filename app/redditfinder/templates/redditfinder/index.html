@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Finder</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'redditfinder/css/styles.css' %}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="#" class="brand">Reddit Finder</a>
+        </div>
+    </nav>
+    <div class="content container">
+        <div class="content-left">
+            <h1>Welcome to Reddit Finder</h1>
+            <p>Reddit Finder helps you quickly find similar posts on Reddit, saving you time and preventing duplicate posts. Our tool is designed to streamline your Reddit search experience.</p>
+            <div class="content-buttons">
+                <button>Go to Search</button>
+                <button>Search for Subreddits</button>
+            </div>
+        </div>
+        <div class="content-right">
+            <img src="{% static 'redditfinder/images/main-content.svg' %}" alt="Main Content">
+        </div>
+    </div>
+    <script src="{% static 'redditfinder/js/scripts.js' %}"></script>
+</body>
+</html>
