@@ -1,12 +1,26 @@
 services:
-  web:
-    container_name: reddit-finder-web
-    build: ./app
+  frontend:
+    build:
+      context: ./app/redditfinder/static/redditfinder/frontend
+      dockerfile: Dockerfile
+    volumes:
+      - frontend-dist:/app/dist
+    command: /bin/sh -c "npm install && npm run build"
+    ports:
+      - "3000:80"
+
+  backend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./app/:/usr/src/app/
+      - frontend-dist:/usr/src/app/static/redditfinder/frontend/dist
     ports:
-      - 8000:8000
+      - "8000:8000"
+    depends_on:
+      - frontend
     env_file:
       - ./.env.dev
 
@@ -257,3 +271,6 @@ services:
       - bash
       - -c
       - airflow
+
+volumes:
+  frontend-dist:

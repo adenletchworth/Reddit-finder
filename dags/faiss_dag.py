@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 from scripts.faiss_indexer import FaissIndexer
 from scripts.mongo_db_sensor import MongoDBPostSensor
 from configs.kafka import mongo_uri, mongo_db_name, mongo_collection_name_posts, mongo_collection_name_index
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 default_args = {
     'owner': 'airflow',

@@ -1,7 +1,6 @@
 FROM apache/airflow:2.8.4
 
 COPY requirements.txt /requirements.txt
-
 RUN pip install --user --upgrade pip && \
     pip install --user -r /requirements.txt
 
@@ -30,5 +29,19 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 ENV PYTHONPATH="/opt/airflow/dags:/opt/airflow/dags/scripts"
 
 COPY dags /opt/airflow/dags
+
+COPY airflow.cfg /usr/local/airflow/airflow.cfg
+
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -sL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs
+
+COPY ./app/redditfinder/static/redditfinder/frontend /frontend
+WORKDIR /frontend
+RUN npm install && npm run build
+
+RUN mkdir -p /usr/src/app/static/redditfinder/frontend/dist
+RUN cp -r /frontend/dist/* /usr/src/app/static/redditfinder/frontend/dist/
 
 USER airflow
