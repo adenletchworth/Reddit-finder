@@ -3,11 +3,21 @@ services:
     build:
       context: ./app/redditfinder/static/redditfinder/frontend
       dockerfile: Dockerfile
+      target: debug  # Use the debug stage for debugging purposes
     volumes:
       - frontend-dist:/app/dist
-    command: /bin/sh -c "npm install && npm run build"
     ports:
       - "3000:80"
+    stdin_open: true
+    tty: true
+
+  nginx:
+    build:
+      context: ./app/redditfinder/static/redditfinder/frontend
+      dockerfile: Dockerfile
+      target: final 
+    ports:
+      - "3001:80"
 
   backend:
     build:
