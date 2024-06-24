@@ -12,11 +12,12 @@ def search_text(request):
     query = request.GET.get('query')
     if query:
         distances, indices = faiss_index.search_index(query)
-        original_posts = faiss_index.fetch_original_posts(indices)
+        metadata = faiss_index.fetch_metadata(indices)
         results = {
             "query": query,
             "distances": distances.tolist(),
-            "posts": original_posts
+            "metadata": metadata
         }
         return JsonResponse(results, safe=False)
     return JsonResponse({"error": "No query provided"}, safe=False)
+

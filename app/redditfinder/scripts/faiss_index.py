@@ -1,4 +1,3 @@
-import time
 import numpy as np
 from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
@@ -7,6 +6,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark import SparkContext, SparkConf
 import json
+import faiss
 
 from .utils import generate_embeddings
 
@@ -61,11 +61,8 @@ class FaissIndexer():
             return None, None
 
     def update_index(self):
-        start_time = time.time()
-
         model_broadcast = self.spark.sparkContext.broadcast(self.model)
 
-        self.log.info("Loading data from MongoDB.")
         posts_df = self.spark.read.format("mongodb") \
             .option("spark.mongodb.read.database", self.database) \
             .option("spark.mongodb.read.collection", self.posts_collection_name) \
@@ -77,27 +74,28 @@ class FaissIndexer():
         new_posts_df = posts_df.filter(~col("id").isin(indexed_ids))
 
         if new_posts_df.count() == 0:
-            self.log.info("No new posts to index.")
             return
 
         def generate_embeddings_partition(posts_iter):
             model = model_broadcast.value
             embeddings = []
+            metadata = []
             for row in posts_iter:
                 post_json = row.json_str
                 embedding = generate_embeddings(post_json, model)
                 embeddings.append(embedding)
-            return embeddings
+                post_meta = {"id": row.id, "subreddit": row.subreddit}
+                metadata.append(post_meta)
+            return embeddings, metadata
 
-        posts_json_df = new_posts_df.selectExpr("to_json(struct(*)) as json_str")
+        posts_json_df = new_posts_df.selectExpr("to_json(struct(*)) as json_str", "id", "subreddit")
 
-        self.log.info("Generating embeddings.")
         posts_with_embeddings_rdd = posts_json_df.rdd.mapPartitions(generate_embeddings_partition)
-        embeddings = np.array(posts_with_embeddings_rdd.collect())
+        embeddings_metadata = posts_with_embeddings_rdd.collect()
 
-        metadata = new_posts_df.select("id", "subreddit").rdd.map(lambda row: row.asDict()).collect()
+        embeddings = np.array([emb for emb, _ in embeddings_metadata])
+        new_metadata = [meta for _, meta in embeddings_metadata]
 
-        self.log.info("Adding embeddings to FAISS index.")
         batch_size = 5
         for start_idx in range(0, len(embeddings), batch_size):
             end_idx = min(start_idx + batch_size, len(embeddings))
@@ -106,21 +104,16 @@ class FaissIndexer():
         index_bytes = faiss.serialize_index(self.index)
         index_bson = bson.Binary(index_bytes)
 
-        combined_metadata = self.metadata + metadata
+        combined_metadata = self.metadata + new_metadata
 
-        self.log.info("Writing updated index and metadata to MongoDB.")
         index_doc = {
             'index': index_bson,
             'metadata': combined_metadata
         }
         self.index_collection.replace_one({}, index_doc, upsert=True)
 
-        post_ids_to_delete = [meta['id'] for meta in metadata]
-        self.log.info("Deleting indexed posts from MongoDB.")
+        post_ids_to_delete = [meta['id'] for meta in new_metadata]
         delete_result = self.posts_collection.delete_many({'id': {'$in': post_ids_to_delete}})
-
-        end_time = time.time()
-        self.log.info(f"Total time for updating index: {end_time - start_time} seconds")
 
         self.metadata = combined_metadata
 
@@ -129,15 +122,11 @@ class FaissIndexer():
         distances, indices = self.index.search(np.array([query_embedding]), k)
         return distances, indices
 
-    def fetch_original_posts(self, indices):
-        original_posts = []
+    def fetch_metadata(self, indices):
+        fetched_metadata = []
         for idx in indices[0]:
             if idx < len(self.metadata):
-                post = self.posts_collection.find_one({'id': self.metadata[idx]['id']})
-                if post:
-                    original_posts.append(post)
-                else:
-                    self.log.warning(f"No document found for metadata index {idx}: {self.metadata[idx]}")
+                fetched_metadata.append(self.metadata[idx])
             else:
-                self.log.warning(f"Index {idx} out of range for metadata with length {len(self.metadata)}")
-        return original_posts
+                fetched_metadata.append({"status": "Index out of bounds"})
+        return fetched_metadata

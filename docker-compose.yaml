@@ -3,9 +3,9 @@ services:
     build:
       context: ./app/redditfinder/static/redditfinder/frontend
       dockerfile: Dockerfile
-      target: debug  # Use the debug stage for debugging purposes
+      target: build
     volumes:
-      - frontend-dist:/app/dist
+      - frontend-dist:/app/build
     ports:
       - "3000:80"
     stdin_open: true
@@ -15,7 +15,7 @@ services:
     build:
       context: ./app/redditfinder/static/redditfinder/frontend
       dockerfile: Dockerfile
-      target: final 
+      target: final
     ports:
       - "3001:80"
 

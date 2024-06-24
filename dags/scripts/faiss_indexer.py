@@ -104,7 +104,7 @@ class FaissIndexer(LoggingMixin):
         embedding_end = time.time()
         self.log.info(f"Generating embeddings took {embedding_end - embedding_start} seconds")
 
-        metadata = new_posts_df.select("id", "subreddit").rdd.map(lambda row: row.asDict()).collect()
+        metadata = new_posts_df.select("id", "subreddit", "title", "author", "permalink").rdd.map(lambda row: row.asDict()).collect()
         self.log.info(f"Collected {len(embeddings)} embeddings.")
         self.log.info(f"Collected {len(metadata)} metadata entries.")
 
@@ -143,20 +143,4 @@ class FaissIndexer(LoggingMixin):
 
         self.metadata = combined_metadata
 
-    def search_index(self, query, k=5):
-        query_embedding = self.model.encode(query)
-        distances, indices = self.index.search(np.array([query_embedding]), k)
-        return distances, indices
 
-    def fetch_original_posts(self, indices):
-        original_posts = []
-        for idx in indices[0]:
-            if idx < len(self.metadata):
-                post = self.posts_collection.find_one({'id': self.metadata[idx]['id']})
-                if post:
-                    original_posts.append(post)
-                else:
-                    self.log.warning(f"No document found for metadata index {idx}: {self.metadata[idx]}")
-            else:
-                self.log.warning(f"Index {idx} out of range for metadata with length {len(self.metadata)}")
-        return original_posts
