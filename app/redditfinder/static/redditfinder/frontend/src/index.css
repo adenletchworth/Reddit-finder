@@ -4,10 +4,17 @@
 
 @layer components {
     .navbar-icon {
-        @apply relative flex items-center justify-center h-12 w-12 mx-auto text-white 
-        border-2 border-primary-light rounded-full 
-        transition-all duration-200 ease-linear 
+        @apply relative flex items-center justify-center h-14 w-14 mx-auto text-white 
+        rounded-full shadow-custom border-primary-light
+        transition-all duration-100 ease-linear 
         hover:bg-primary-light hover:rounded-md 
         hover:border-accent-light cursor-pointer;
     }
+
+    .btn {
+        @apply h-12 px-6 text-white bg-primary-light rounded-md 
+        transition-all duration-200 ease-linear 
+        hover:bg-primary-dark cursor-pointer;
+    }
 }
+

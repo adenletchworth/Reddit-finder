@@ -8,5 +8,6 @@ pyspark
 lxml
 html5lib
 matplotlib
+django-cors-headers
 
 

@@ -11,7 +11,7 @@ def index(request):
 def search_text(request):
     query = request.GET.get('query')
     if query:
-        distances, indices = faiss_index.search_index(query)
+        distances, indices = faiss_index.search_index(query, k=6)
         metadata = faiss_index.fetch_metadata(indices)
         results = {
             "query": query,
