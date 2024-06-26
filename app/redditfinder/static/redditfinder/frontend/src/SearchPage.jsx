@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import SearchBar from './SearchBar';
 import Card from './Card';
+import useSearchResultsAnimation from './useSearchResultsAnimation';
 
-function SearchPage() {
+function SearchPage({ header }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [results, setResults] = useState([]);
     const [error, setError] = useState(null);
+    const ref = useRef(null);
 
     const handleSearchChange = (event) => {
         setSearchQuery(event.target.value);
@@ -31,22 +33,27 @@ function SearchPage() {
         }
     }, [searchQuery]);
 
+    useSearchResultsAnimation(ref, results);
+
     return (
         <div className="container mx-auto p-4 mt-24">
-            <h1 className="text-2xl font-bold mb-4">Search Page</h1>
-            <SearchBar 
-                placeholder="Search..." 
-                onChange={handleSearchChange} 
-            />
-            {error && <p className="text-red-500">{error}</p>}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {results.map((item) => (
+            <div className="mb-8 text-center">
+                <h1 className="text-4xl font-bold text-primary-dark mb-4">{header}</h1>
+                <SearchBar 
+                    placeholder="Search..." 
+                    onChange={handleSearchChange} 
+                />
+            </div>
+            {error && <p className="text-accent">{error}</p>}
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3" ref={ref}>
+                {results.map((item, index) => (
                     <Card 
                         key={item.id} 
                         title={item.title} 
                         subreddit={item.subreddit}
                         author={item.author}
                         permalink={item.permalink}
+                        className={`search-result-card order-${index}`}
                     />
                 ))}
             </div>

@@ -1,4 +1,4 @@
-/** @type {import('tailwindcss').Config} */
+// tailwind.config.js
 module.exports = {
   mode: "jit",
   content: [
@@ -8,37 +8,29 @@ module.exports = {
   theme: {
     extend: {
       boxShadow: {
-        'custom': '0 10px 25px rgba(0, 0, 0, 0.5)', 
+        'custom': '0 10px 25px rgba(0, 0, 0, 0.5)',
+        'prominent': '0 15px 30px rgba(0, 0, 0, 0.7)',  
       },
       backgroundImage: {
         'svg-bg-1': "url('/src/assets/background1.svg')",
-        'svg-bg-2': "url('/src/assets/background2.svg')",
-        // 'svg-bg-3': "url('/src/assets/background3.svg')",
-        // 'svg-bg-4': "url('/src/assets/background4.svg')",
-        // 'svg-bg-5': "url('/src/assets/background5.svg')",
-        // 'svg-bg-6': "url('/src/assets/background6.svg')",
-        // 'svg-bg-7': "url('/src/assets/background7.svg')",
-        // 'svg-bg-8': "url('/src/assets/background8.svg')",
-        // 'svg-bg-9': "url('/src/assets/background9.svg')",
-        // 'svg-bg-10': "url('/src/assets/background10.svg')",
       },
       colors: {
         primary: {
-          light: '#cfe8ff', // Light Blue
-          DEFAULT: '#007bff', // Blue
-          dark: '#0056b3', // Dark Blue
+          light: '#cfe8ff',
+          DEFAULT: '#007bff',
+          dark: '#0056b3',
         },
         secondary: {
-          light: '#f1f1f1', // Light Gray
-          DEFAULT: '#6c757d', // Gray
-          dark: '#343a40', // Dark Gray
+          light: '#f1f1f1',
+          DEFAULT: '#6c757d',
+          dark: '#343a40',
         },
         accent: {
-          light: '#ffccd5', // Light Coral
-          DEFAULT: '#ff6b6b', // Coral
-          dark: '#c62e2e', // Dark Coral
+          light: '#ffccd5',
+          DEFAULT: '#ff6b6b',
+          dark: '#c62e2e',
         },
-        white: '#ffffff', // Pure White
+        white: '#ffffff',
       },
       fontFamily: {
         sans: ['Roboto', 'Arial', 'sans-serif'],
@@ -47,20 +39,10 @@ module.exports = {
       keyframes: {
         backgroundFade: {
           '0%': { backgroundImage: "url('/src/assets/background1.svg')" },
-          '10%': { backgroundImage: "url('/src/assets/background2.svg')" },
-          // '20%': { backgroundImage: "url('/src/assets/background3.svg')" },
-          // '30%': { backgroundImage: "url('/src/assets/background4.svg')" },
-          // '40%': { backgroundImage: "url('/src/assets/background5.svg')" },
-          // '50%': { backgroundImage: "url('/src/assets/background6.svg')" },
-          // '60%': { backgroundImage: "url('/src/assets/background7.svg')" },
-          // '70%': { backgroundImage: "url('/src/assets/background8.svg')" },
-          // '80%': { backgroundImage: "url('/src/assets/background9.svg')" },
-          // '90%': { backgroundImage: "url('/src/assets/background10.svg')" },
-          // '100%': { backgroundImage: "url('/src/assets/background1.svg')" },
         },
       },
       animation: {
-        backgroundFade: 'backgroundFade 30s infinite', // Adjust the duration as needed
+        backgroundFade: 'backgroundFade 30s infinite',
       },
     },
   },

@@ -13,7 +13,7 @@ const App = () => {
       case 'home':
         return <MainBody setCurrentPage={setCurrentPage} />;
       case 'search':
-        return <SearchPage />;
+        return <SearchPage header="Discover Threads" />;
       case 'info':
         return <InfoPage />;
       case 'contact':

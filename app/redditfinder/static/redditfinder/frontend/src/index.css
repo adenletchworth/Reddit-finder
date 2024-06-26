@@ -16,5 +16,44 @@
         transition-all duration-200 ease-linear 
         hover:bg-primary-dark cursor-pointer;
     }
-}
 
+    .card {
+        @apply p-6 bg-white rounded-lg border border-primary-light shadow-sm transition-all duration-300 ease-in-out;
+    }
+
+    .card:hover {
+        @apply shadow-lg border-primary-dark;
+    }
+
+    .card-title {
+        @apply text-2xl font-bold mb-2 text-primary-dark;
+    }
+
+    .card-subtext {
+        @apply text-sm text-secondary-dark;
+    }
+
+    .card-link {
+        @apply text-accent hover:underline;
+    }
+
+    .search-bar {
+        @apply mb-4;
+    }
+
+    .search-input {
+        @apply w-full px-6 py-3 border border-primary-light rounded-full shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-primary-light;
+    }
+
+    .info-rectangle {
+        transition: transform 1s ease-in-out, opacity 1s ease-in-out;
+    }
+
+    .left-main-content, .right-main-content {
+        transition: transform 1s ease-in-out, opacity 1s ease-in-out;
+    }
+
+    .search-result-card {
+        transition: transform 1s ease-in-out, opacity 1s ease-in-out;
+    }
+}

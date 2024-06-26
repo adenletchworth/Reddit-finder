@@ -1,4 +1,3 @@
-// NavBar.js
 import React from 'react';
 import { Icon } from '@iconify/react';
 import homeIcon from '@iconify-icons/fa/home';
