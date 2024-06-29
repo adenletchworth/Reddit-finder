@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ThreadMatch is a project designed to utilize multi-modal semantic similarity search to find similar posts within a given subreddit. By combining the text content of posts and the text from URLs mentioned in the posts, ThreadMatch provides enriched and more accurate search results. Video and Image Search is WIP.
+Thread Match is designed to use multi-modal semantic similarity search to find similar posts within a subreddit. It combines the text from posts, URLs, and image embeddings to deliver more accurate search results. Video search is currently in development
 
 ## Features
 
