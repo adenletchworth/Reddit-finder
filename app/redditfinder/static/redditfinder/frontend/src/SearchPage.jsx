@@ -13,6 +13,33 @@ function SearchPage({ header }) {
         setSearchQuery(event.target.value);
     };
 
+    const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const formData = new FormData();
+            formData.append('image', file);
+
+            fetch('http://localhost:8000/search_image/', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    setResults(data.metadata);
+                    setError(null);
+                })
+                .catch(error => {
+                    console.error('Error fetching search results:', error);
+                    setError('Failed to fetch search results. Please try again.');
+                });
+        }
+    };
+
     useEffect(() => {
         if (searchQuery) {
             fetch(`http://localhost:8000/search_text?query=${searchQuery}`)
@@ -42,6 +69,7 @@ function SearchPage({ header }) {
                 <SearchBar 
                     placeholder="Search..." 
                     onChange={handleSearchChange} 
+                    onFileUpload={handleFileUpload}
                 />
             </div>
             {error && <p className="text-accent">{error}</p>}

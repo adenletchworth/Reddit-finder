@@ -14,13 +14,17 @@ default_args = {
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retries': 5,  # Increase the number of retries
+    'retry_delay': timedelta(minutes=15),  # Increase the retry delay
 }
 
 def update_faiss_index():
-    faiss_indexer = FaissIndexer(mongo_uri, mongo_db_name, mongo_collection_name_posts, mongo_collection_name_index)
-    faiss_indexer.update_index()
+    try:
+        faiss_indexer = FaissIndexer(mongo_uri, mongo_db_name, mongo_collection_name_posts, mongo_collection_name_index)
+        faiss_indexer.update_index()
+    except Exception as e:
+        logger.error(f"Error in update_faiss_index: {e}")
+        raise
 
 with DAG('faiss_indexing_dag',
          default_args=default_args,
@@ -28,8 +32,8 @@ with DAG('faiss_indexing_dag',
          schedule_interval=timedelta(minutes=10),
          start_date=datetime(2024, 6, 1),
          catchup=False,
-         max_active_runs=1, 
-         concurrency=1,      
+         max_active_runs=1,
+         concurrency=1,
          ) as dag:
 
     check_for_new_posts = MongoDBPostSensor(
@@ -43,7 +47,9 @@ with DAG('faiss_indexing_dag',
 
     index_posts = PythonOperator(
         task_id='index_posts',
-        python_callable=update_faiss_index
+        python_callable=update_faiss_index,
+        execution_timeout=timedelta(minutes=60),
+        dag=dag
     )
 
     check_for_new_posts >> index_posts

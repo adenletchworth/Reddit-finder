@@ -9,5 +9,8 @@ lxml
 html5lib
 matplotlib
 django-cors-headers
+torch
+torchvision
+pillow
 
 

@@ -1,132 +1,105 @@
+import requests
+from bs4 import BeautifulSoup
+import json
 import numpy as np
-from pymongo import MongoClient
+from PIL import Image
+import torch
+from torchvision import models, transforms
+import torch.nn as nn
+import faiss
+from pymongo import MongoClient, errors
 from sentence_transformers import SentenceTransformer
 import bson
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from pyspark import SparkContext, SparkConf
-import json
-import faiss
+from threading import Lock
 
-from .utils import generate_embeddings
+class SingletonMeta(type):
+    _instances = {}
+    _lock: Lock = Lock()
 
-class SparkSingleton:
-    _instance = None
+    def __call__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls not in cls._instances:
+                instance = super().__call__(*args, **kwargs)
+                cls._instances[cls] = instance
+        return cls._instances[cls]
 
-    @staticmethod
-    def get_instance():
-        if SparkSingleton._instance is None:
-            mongo_spark_package = "org.mongodb.spark:mongo-spark-connector_2.12:10.1.1"
-            conf = SparkConf().setAppName("FAISSIndexing") \
-                              .setMaster("local[*]") \
-                              .set("spark.jars.packages", mongo_spark_package) \
-                              .setExecutorEnv("PYTHONPATH", "/opt/airflow/dags:/opt/airflow/dags/scripts") \
-                              .set("spark.executor.memory", "4g") \
-                              .set("spark.driver.memory", "4g")
+class ImageEmbedding:
+    def __init__(self):
+        self.model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+        self.model = nn.Sequential(*(list(self.model.children())[:-1]))
+        self.model.eval()
+        self.embedding_dimension = 2048  # ResNet-50 embedding dimension
 
-            SparkSingleton._instance = SparkContext(conf=conf)
-        return SparkSingleton._instance
+        self.preprocess = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
-class FaissIndexer():
-    def __init__(self, mongo_uri, database, posts_collection, index_collection):
+    def generate_embedding(self, image):
+        image = self.preprocess(image)
+        image = image.unsqueeze(0)
+        with torch.no_grad():
+            embedding = self.model(image)
+        embedding = embedding.squeeze().numpy()
+        return embedding
+
+class FaissSearcher(metaclass=SingletonMeta):
+    def __init__(self, mongo_uri, database, index_collection):
         self.mongo_uri = mongo_uri
         self.database = database
-        self.posts_collection_name = posts_collection
         self.index_collection_name = index_collection
 
-        self.sc = SparkSingleton.get_instance()
-        self.spark = SparkSession.builder.config(conf=self.sc.getConf()).getOrCreate()
+        try:
+            self.client = MongoClient(self.mongo_uri)
+            self.db = self.client[self.database]
+            self.index_collection = self.db[self.index_collection_name]
+        except errors.ConnectionError as e:
+            raise Exception(f"Failed to connect to MongoDB: {e}")
 
-        self.client = MongoClient(self.mongo_uri)
-        self.db = self.client[self.database]
-        self.posts_collection = self.db[self.posts_collection_name]
-        self.index_collection = self.db[self.index_collection_name]
-
-        self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
-        self.dimension = 384
         self.index, self.metadata = self.retrieve_faiss_index()
         if self.index is None:
-            self.index = faiss.IndexFlatL2(self.dimension)
-            self.metadata = []
+            raise Exception("No FAISS index found in MongoDB.")
+
+        self.text_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+        self.image_model = ImageEmbedding()
+        self.dimension = 384 + self.image_model.embedding_dimension
 
     def retrieve_faiss_index(self):
-        stored_index_doc = self.index_collection.find_one()
-        if stored_index_doc:
-            index_bytes = stored_index_doc['index']
-            index_np = np.frombuffer(index_bytes, dtype=np.uint8)
-            retrieved_index = faiss.deserialize_index(index_np)
-            metadata = stored_index_doc.get('metadata', [])
-            return retrieved_index, metadata
+        try:
+            stored_index_doc = self.index_collection.find_one()
+            if stored_index_doc:
+                index_bytes = stored_index_doc['index']
+                index_np = np.frombuffer(index_bytes, dtype=np.uint8)
+                retrieved_index = faiss.deserialize_index(index_np)
+                metadata = stored_index_doc.get('metadata', [])
+                return retrieved_index, metadata
+        except errors.PyMongoError as e:
+            print(f"Failed to retrieve index: {e}")
+        return None, None
+
+    def search(self, query, k=10, query_type='text'):
+        if query_type == 'text':
+            query_embedding = self.text_model.encode(query)
+            combined_embedding = np.concatenate([query_embedding, np.zeros(self.image_model.embedding_dimension)], axis=0)
+        elif query_type == 'image':
+            image = Image.open(query).convert('RGB')
+            image_embedding = self.image_model.generate_embedding(image)
+            combined_embedding = np.concatenate([np.zeros(self.text_model.get_sentence_embedding_dimension()), image_embedding], axis=0)
         else:
-            return None, None
+            raise ValueError("query_type must be either 'text' or 'image'")
 
-    def update_index(self):
-        model_broadcast = self.spark.sparkContext.broadcast(self.model)
+        combined_embedding = combined_embedding.astype('float32')
 
-        posts_df = self.spark.read.format("mongodb") \
-            .option("spark.mongodb.read.database", self.database) \
-            .option("spark.mongodb.read.collection", self.posts_collection_name) \
-            .option("spark.mongodb.read.connection.uri", self.mongo_uri) \
-            .load() \
-            .repartition(10)
+        if combined_embedding.shape[0] != self.dimension:
+            raise ValueError(f"Query embedding dimension {combined_embedding.shape[0]} does not match index dimension {self.dimension}")
 
-        indexed_ids = set(meta['id'] for meta in self.metadata)
-        new_posts_df = posts_df.filter(~col("id").isin(indexed_ids))
-
-        if new_posts_df.count() == 0:
-            return
-
-        def generate_embeddings_partition(posts_iter):
-            model = model_broadcast.value
-            embeddings = []
-            metadata = []
-            for row in posts_iter:
-                post_json = row.json_str
-                embedding = generate_embeddings(post_json, model)
-                embeddings.append(embedding)
-                post_meta = {"id": row.id, "subreddit": row.subreddit}
-                metadata.append(post_meta)
-            return embeddings, metadata
-
-        posts_json_df = new_posts_df.selectExpr("to_json(struct(*)) as json_str", "id", "subreddit")
-
-        posts_with_embeddings_rdd = posts_json_df.rdd.mapPartitions(generate_embeddings_partition)
-        embeddings_metadata = posts_with_embeddings_rdd.collect()
-
-        embeddings = np.array([emb for emb, _ in embeddings_metadata])
-        new_metadata = [meta for _, meta in embeddings_metadata]
-
-        batch_size = 5
-        for start_idx in range(0, len(embeddings), batch_size):
-            end_idx = min(start_idx + batch_size, len(embeddings))
-            self.index.add(embeddings[start_idx:end_idx])
-
-        index_bytes = faiss.serialize_index(self.index)
-        index_bson = bson.Binary(index_bytes)
-
-        combined_metadata = self.metadata + new_metadata
-
-        index_doc = {
-            'index': index_bson,
-            'metadata': combined_metadata
-        }
-        self.index_collection.replace_one({}, index_doc, upsert=True)
-
-        post_ids_to_delete = [meta['id'] for meta in new_metadata]
-        delete_result = self.posts_collection.delete_many({'id': {'$in': post_ids_to_delete}})
-
-        self.metadata = combined_metadata
-
-    def search_index(self, query, k=5):
-        query_embedding = self.model.encode(query)
-        distances, indices = self.index.search(np.array([query_embedding]), k)
+        distances, indices = self.index.search(np.array([combined_embedding]), k)
         return distances, indices
 
     def fetch_metadata(self, indices):
-        fetched_metadata = []
-        for idx in indices[0]:
-            if idx < len(self.metadata):
-                fetched_metadata.append(self.metadata[idx])
-            else:
-                fetched_metadata.append({"status": "Index out of bounds"})
-        return fetched_metadata
+        return [self.metadata[idx] for idx in indices[0]]
+
+
+

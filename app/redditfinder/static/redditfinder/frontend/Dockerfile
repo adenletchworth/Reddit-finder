@@ -6,7 +6,7 @@ COPY package*.json ./
 
 RUN npm install
 
-RUN npm install -D tailwindcss postcss autoprefixer @iconify/react @iconify-icons/fa d3
+RUN npm install -D tailwindcss postcss autoprefixer @iconify/react @iconify-icons/fa d3 @iconify/ic
 
 RUN npx tailwindcss init -p
 
